@@ -1,22 +1,16 @@
 # mintlify-search-cli
 
-**mintlify-search-cli** (`msc`) is a high-performance, deterministic retrieval engine built for developers and AI agents (Claude, Cursor, Codex). It bypasses the overhead of Model Context Protocol (MCP) and LLM-based RAG by querying the official Mintlify Discovery API directly.
+`msc` is a CLI for searching Mintlify documentation from the terminal or from AI agents.
 
-> **Why this?** Most documentation tools are slow or return too much noise, MCP uses too many tokens. This CLI is optimized for **speed**, **token-efficiency**, and **machine-readability**.
+## Install
 
----
+### Quick install
 
-## Features
+```bash
+curl -fsSL https://raw.githubusercontent.com/RedBoardDev/mintlify-search-cli/refs/heads/main/install.sh | bash
+```
 
-- **Zero-Latency:** Direct API calls with 3s timeout.
-- **Agent-Optimized:** Flat JSON output designed to minimize token usage in LLM context windows.
-- **Deterministic:** No generative AI hallucinations — only indexed documentation.
-- **Built-in Diagnostics:** The `doctor` command validates your connectivity, auth, and latency.
-- **Local Cache:** Intelligent TTL-based caching (5min, SHA256 keys) to avoid redundant network overhead.
-
----
-
-## Installation
+The installer builds `msc`, installs it to `/usr/local/bin`, and can optionally configure Claude Code, Cursor, or Codex.
 
 ### From source
 
@@ -26,99 +20,53 @@ cd mintlify-search-cli
 make install
 ```
 
-### One-liner
+### Requirements
 
-```bash
-curl -sSL https://raw.githubusercontent.com/redboard/mintlify-search-cli/main/install.sh | bash
-```
-
-**Requirements:** Go 1.24+
-
----
+- Go 1.24+
 
 ## Configuration
 
-Configuration is resolved with precedence: **flags > env vars > config file**.
+Resolution order: `flags > env vars > config file`
 
-### Environment variables (recommended for agents)
+### Environment variables
 
 ```bash
 export MSC_API_KEY="mint_dsc_xxxxx"
 export MSC_DOMAIN="docs.example.com"
 ```
 
-For Claude Code, add to `.claude/settings.local.json`:
-
-```json
-{
-  "env": {
-    "MSC_API_KEY": "mint_dsc_xxxxx",
-    "MSC_DOMAIN": "docs.example.com"
-  }
-}
-```
-
-### Config file (recommended for humans)
+### Config file
 
 ```bash
-msc config set-key <your-mintlify-api-key>
-msc config set-domain <your-docs-domain>
+msc config set-key <mintlify-api-key>
+msc config set-domain <docs-domain>
 msc config show
 ```
 
-Stored in `~/.config/msc/config.json`.
+Config path: `~/.config/msc/config.json`
 
-### One-shot flags
+### One-shot usage
 
 ```bash
 msc search "auth" --api-key mint_dsc_xxx --domain docs.example.com
 ```
 
----
-
-## Usage
-
-### Search documentation
+## Commands
 
 ```bash
-# Text output (default)
 msc search "authentication"
-
-# Limit results
 msc search "webhooks" --limit 3
-
-# JSON output (minified, token-optimized)
 msc search "authentication" --json
-```
-
-### Open in browser
-
-```bash
 msc open "getting started"
-```
-
-### Diagnostics
-
-```bash
 msc doctor
 ```
 
----
+## JSON Output
 
-## Agent Integration (Claude/Cursor)
+`msc search --json` returns minified, flat JSON designed for agent consumption.
 
-**Output Philosophy:**
-The JSON output is **minified and flat**. We strip unnecessary nesting to ensure the agent receives the maximum amount of information within its context window without wasting tokens.
-
-```bash
-# Example for agent consumption
-msc search "api endpoints" --json --limit 3
-```
-
-See `skill.md` for agent skill definition.
-
----
+See `skill.md` for the agent integration file.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT. See [LICENSE](LICENSE).
