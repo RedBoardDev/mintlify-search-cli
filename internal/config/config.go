@@ -10,20 +10,18 @@ import (
 )
 
 const (
-	EnvAPIKey = "MSC_API_KEY"
+	EnvAPIKey = "MSC_API_KEY" //nolint:gosec // Env var name, not a credential.
 	EnvDomain = "MSC_DOMAIN"
 )
 
-// Indirection for testing — allows overriding the config file path.
-var configFilePathFn = ConfigFilePath
+var configFilePathFn = ConfigFilePath // Indirection for testing.
 
 type Config struct {
 	APIKey string `json:"api_key"`
 	Domain string `json:"domain"`
 }
 
-// Load resolves config with precedence: env vars > config file.
-// Flag overrides are handled by the CLI layer.
+// Precedence: env vars > config file. Flag overrides are in the CLI layer.
 func Load() (*Config, error) {
 	cfg, err := loadFile()
 	if err != nil {
@@ -46,7 +44,7 @@ func loadFile() (*Config, error) {
 		return nil, fmt.Errorf("resolving config path: %w", err)
 	}
 
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // Path from internal config dir, not user input.
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return &Config{}, nil

@@ -63,7 +63,7 @@ func (c *Client) Search(ctx context.Context, query string, limit int) ([]SearchR
 	if err != nil {
 		return nil, fmt.Errorf("executing request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // Non-actionable on read close.
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

@@ -33,7 +33,7 @@ func Key(parts ...string) string {
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
-// Get returns nil (no error) on cache miss or expiry.
+// Returns nil (no error) on cache miss or expiry.
 func (c *Cache) Get(key string) ([]byte, error) {
 	path := c.path(key)
 
@@ -46,11 +46,11 @@ func (c *Cache) Get(key string) ([]byte, error) {
 	}
 
 	if time.Since(info.ModTime()) > c.ttl {
-		_ = os.Remove(path) // Best-effort cleanup of expired entry.
+		_ = os.Remove(path) // Best-effort cleanup.
 		return nil, nil
 	}
 
-	return os.ReadFile(path)
+	return os.ReadFile(path) //nolint:gosec // Path built from internal cache dir + SHA256 key.
 }
 
 func (c *Cache) Set(key string, data []byte) error {

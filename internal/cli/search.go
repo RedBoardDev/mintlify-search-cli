@@ -7,11 +7,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/redboard/mintlify-search-cli/internal/api"
 	"github.com/redboard/mintlify-search-cli/internal/cache"
 	"github.com/redboard/mintlify-search-cli/internal/config"
 	"github.com/redboard/mintlify-search-cli/internal/output"
-	"github.com/spf13/cobra"
 )
 
 func newSearchCmd() *cobra.Command {

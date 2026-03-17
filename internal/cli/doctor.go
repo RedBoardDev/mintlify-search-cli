@@ -6,16 +6,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/redboard/mintlify-search-cli/internal/api"
 	"github.com/redboard/mintlify-search-cli/internal/config"
-	"github.com/spf13/cobra"
 )
 
 func newDoctorCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor",
 		Short: "Check configuration and connectivity",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runDoctor(cmd)
 		},
 	}
@@ -35,13 +36,14 @@ func runDoctor(cmd *cobra.Command) error {
 	printSource("api_key", cfg.APIKey, config.EnvAPIKey, "api-key", cmd)
 	printSource("domain", cfg.Domain, config.EnvDomain, "domain", cmd)
 
-	if cfg.APIKey == "" {
+	switch {
+	case cfg.APIKey == "":
 		printCheck(false, "API key", "not set")
 		allPassed = false
-	} else if !strings.HasPrefix(cfg.APIKey, "mint_") {
+	case !strings.HasPrefix(cfg.APIKey, "mint_"):
 		printCheck(false, "API key", "does not start with 'mint_'")
 		allPassed = false
-	} else {
+	default:
 		masked := cfg.APIKey[:8] + "..." + cfg.APIKey[len(cfg.APIKey)-4:]
 		printCheck(true, "API key", masked)
 	}

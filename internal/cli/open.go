@@ -6,8 +6,9 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/redboard/mintlify-search-cli/internal/api"
 	"github.com/spf13/cobra"
+
+	"github.com/redboard/mintlify-search-cli/internal/api"
 )
 
 func newOpenCmd() *cobra.Command {
@@ -60,5 +61,5 @@ func openBrowser(url string) error {
 	}
 
 	args = append(args, url)
-	return exec.Command(cmd, args...).Start()
+	return exec.Command(cmd, args...).Start() //nolint:gosec // Args from controlled switch, not user input.
 }

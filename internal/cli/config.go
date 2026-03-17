@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/redboard/mintlify-search-cli/internal/config"
 	"github.com/spf13/cobra"
+
+	"github.com/redboard/mintlify-search-cli/internal/config"
 )
 
 func newConfigCmd() *cobra.Command {
@@ -29,7 +30,7 @@ func newSetKeyCmd() *cobra.Command {
 		Use:   "set-key <api-key>",
 		Short: "Set the Mintlify API key",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			cfg, err := config.Load()
 			if err != nil {
 				return err
@@ -49,7 +50,7 @@ func newSetDomainCmd() *cobra.Command {
 		Use:   "set-domain <domain>",
 		Short: "Set the documentation domain (e.g. docs.example.com)",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			cfg, err := config.Load()
 			if err != nil {
 				return err
@@ -68,7 +69,7 @@ func newShowCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "show",
 		Short: "Display current configuration",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			cfg, err := config.Load()
 			if err != nil {
 				return err
@@ -80,8 +81,8 @@ func newShowCmd() *cobra.Command {
 			}
 
 			path, _ := config.ConfigFilePath()
-			fmt.Fprintf(os.Stdout, "Config file: %s\n\n%s\n", path, string(data))
-			return nil
+			_, err = fmt.Fprintf(os.Stdout, "Config file: %s\n\n%s\n", path, string(data))
+			return err
 		},
 	}
 }

@@ -1,8 +1,9 @@
 package cli
 
 import (
-	"github.com/redboard/mintlify-search-cli/internal/config"
 	"github.com/spf13/cobra"
+
+	"github.com/redboard/mintlify-search-cli/internal/config"
 )
 
 var Version = "dev"
@@ -29,7 +30,7 @@ func NewRootCmd() *cobra.Command {
 	return cmd
 }
 
-// resolveConfig loads config with precedence: flags > env > file.
+// Precedence: flags > env > file.
 func resolveConfig(cmd *cobra.Command) (*config.Config, error) {
 	cfg, err := config.Load()
 	if err != nil {
