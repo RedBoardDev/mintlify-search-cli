@@ -17,49 +17,31 @@ func newConfigCmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(
-		newSetKeyCmd(),
-		newSetDomainCmd(),
+		newSetMCPURLCmd(),
 		newShowCmd(),
 	)
 
 	return cmd
 }
 
-func newSetKeyCmd() *cobra.Command {
+func newSetMCPURLCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "set-key <api-key>",
-		Short: "Set the Mintlify API key",
+		Use:   "set-mcp-url <url>",
+		Short: "Set the Mintlify MCP URL",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			cfg, err := config.Load()
 			if err != nil {
 				return err
 			}
-			cfg.APIKey = args[0]
+			cfg.MCPURL = args[0]
+			if err := cfg.Validate(); err != nil {
+				return err
+			}
 			if err := config.Save(cfg); err != nil {
 				return err
 			}
-			fmt.Println("API key saved.")
-			return nil
-		},
-	}
-}
-
-func newSetDomainCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "set-domain <domain>",
-		Short: "Set the documentation domain (e.g. docs.example.com)",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			cfg, err := config.Load()
-			if err != nil {
-				return err
-			}
-			cfg.Domain = args[0]
-			if err := config.Save(cfg); err != nil {
-				return err
-			}
-			fmt.Println("Domain saved.")
+			fmt.Println("MCP URL saved.")
 			return nil
 		},
 	}

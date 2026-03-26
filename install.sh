@@ -1,9 +1,4 @@
-#!/usr/bin/env bash
 set -euo pipefail
-
-# ─────────────────────────────────────────────────────────
-# msc — Mintlify Search CLI installer & setup wizard
-# ─────────────────────────────────────────────────────────
 
 REPO="redboard/mintlify-search-cli"
 BINARY="msc"
@@ -11,7 +6,6 @@ INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_SOURCE="$SCRIPT_DIR/skill.md"
 
-# Colors (disabled if not a terminal).
 if [ -t 1 ]; then
     BOLD='\033[1m' DIM='\033[2m' GREEN='\033[32m' YELLOW='\033[33m'
     CYAN='\033[36m' RED='\033[31m' RESET='\033[0m'
@@ -25,9 +19,20 @@ warn()  { echo -e "  ${YELLOW}!${RESET} $1"; }
 fail()  { echo -e "  ${RED}✗${RESET} $1"; }
 ask()   { echo -en "  ${BOLD}$1${RESET} "; }
 
-# ─────────────────────────────────────────────────────────
-# Step 1: Build & install binary
-# ─────────────────────────────────────────────────────────
+render_skill_file() {
+    local output="$1"
+
+    if [ ! -f "$SKILL_SOURCE" ]; then
+        return 1
+    fi
+
+    if [ -n "${MCP_URL:-}" ]; then
+        sed "s|__MSC_MCP_URL__|$MCP_URL|g" "$SKILL_SOURCE" > "$output"
+    else
+        cp "$SKILL_SOURCE" "$output"
+    fi
+}
+
 info "Installing msc"
 
 if ! command -v go &> /dev/null; then
@@ -35,7 +40,6 @@ if ! command -v go &> /dev/null; then
     exit 1
 fi
 
-# Build from local source if available, otherwise clone.
 if [ -f "$SCRIPT_DIR/go.mod" ]; then
     BUILD_DIR="$SCRIPT_DIR"
 else
@@ -57,150 +61,78 @@ install -m 755 "$BINARY" "$INSTALL_DIR/$BINARY" 2>/dev/null || {
 ok "Installed $BINARY $VERSION to $INSTALL_DIR/$BINARY"
 echo ""
 
-# ─────────────────────────────────────────────────────────
-# Step 2: Configuration wizard
-# ─────────────────────────────────────────────────────────
 info "Configuration"
 
-# API Key
-CURRENT_KEY="${MSC_API_KEY:-}"
-if [ -z "$CURRENT_KEY" ]; then
-    ask "Mintlify API key (mint_dsc_...):"
-    read -r API_KEY
-    if [ -z "$API_KEY" ]; then
-        warn "Skipped — set later with: msc config set-key <key>"
+CURRENT_MCP_URL="${MSC_MCP_URL:-}"
+if [ -z "$CURRENT_MCP_URL" ]; then
+    ask "Mintlify MCP URL (https://<docs>/mcp or /authed/mcp):"
+    read -r MCP_URL
+    if [ -z "$MCP_URL" ]; then
+        warn "Skipped — set later with: msc config set-mcp-url <url>"
     else
-        "$INSTALL_DIR/$BINARY" config set-key "$API_KEY" > /dev/null
-        ok "API key saved to config file"
+        "$INSTALL_DIR/$BINARY" config set-mcp-url "$MCP_URL" > /dev/null
+        ok "MCP URL saved to config file"
     fi
 else
-    ok "API key detected from MSC_API_KEY env var"
-    API_KEY="$CURRENT_KEY"
-fi
-
-# Domain
-CURRENT_DOMAIN="${MSC_DOMAIN:-}"
-if [ -z "$CURRENT_DOMAIN" ]; then
-    ask "Documentation domain (e.g. docs.example.com):"
-    read -r DOMAIN
-    if [ -z "$DOMAIN" ]; then
-        warn "Skipped — set later with: msc config set-domain <domain>"
-    else
-        "$INSTALL_DIR/$BINARY" config set-domain "$DOMAIN" > /dev/null
-        ok "Domain saved to config file"
-    fi
-else
-    ok "Domain detected from MSC_DOMAIN env var"
-    DOMAIN="$CURRENT_DOMAIN"
+    MCP_URL="$CURRENT_MCP_URL"
+    ok "MCP URL detected from MSC_MCP_URL env var"
+    "$INSTALL_DIR/$BINARY" config set-mcp-url "$MCP_URL" > /dev/null
+    ok "MCP URL saved to config file"
 fi
 
 echo ""
 
-# ─────────────────────────────────────────────────────────
-# Step 3: Agent integrations
-# ─────────────────────────────────────────────────────────
 info "Agent integrations"
 echo -e "  ${DIM}Install msc as a skill in your AI coding agents.${RESET}"
 echo ""
 
-API_KEY="${API_KEY:-}"
-DOMAIN="${DOMAIN:-}"
-
-# ── Claude Code ──────────────────────────────────────────
 setup_claude_code() {
     local settings_dir="$HOME/.claude"
-    local settings_local="$settings_dir/settings.local.json"
     local skills_dir="$settings_dir/skills"
+    local rendered_skill
 
     mkdir -p "$settings_dir" "$skills_dir"
 
-    # Install skill file.
     if [ -f "$SKILL_SOURCE" ]; then
-        cp "$SKILL_SOURCE" "$skills_dir/mintlify-search.md"
+        rendered_skill="$(mktemp)"
+        render_skill_file "$rendered_skill"
+        cp "$rendered_skill" "$skills_dir/mintlify-search.md"
+        rm -f "$rendered_skill"
         ok "Skill file installed to $skills_dir/mintlify-search.md"
     fi
-
-    # Inject env vars into settings.local.json.
-    if [ -n "$API_KEY" ] && [ -n "$DOMAIN" ]; then
-        if [ -f "$settings_local" ]; then
-            # Merge env into existing file using a temporary approach.
-            local tmp
-            tmp=$(mktemp)
-            # Use python/node to merge JSON if available, otherwise create fresh.
-            if command -v python3 &> /dev/null; then
-                python3 -c "
-import json, sys
-with open('$settings_local') as f:
-    data = json.load(f)
-env = data.setdefault('env', {})
-env['MSC_API_KEY'] = '$API_KEY'
-env['MSC_DOMAIN'] = '$DOMAIN'
-with open('$tmp', 'w') as f:
-    json.dump(data, f, indent=2)
-" 2>/dev/null && mv "$tmp" "$settings_local" || {
-                    rm -f "$tmp"
-                    warn "Could not merge into $settings_local — add env vars manually"
-                    return
-                }
-            else
-                rm -f "$tmp"
-                warn "python3 not found — add MSC_API_KEY and MSC_DOMAIN to $settings_local manually"
-                return
-            fi
-        else
-            cat > "$settings_local" << JSONEOF
-{
-  "env": {
-    "MSC_API_KEY": "$API_KEY",
-    "MSC_DOMAIN": "$DOMAIN"
-  }
-}
-JSONEOF
-        fi
-        ok "Env vars added to $settings_local"
-    fi
 }
 
-# ── Cursor ───────────────────────────────────────────────
 setup_cursor() {
     local cursor_dir="$HOME/.cursor"
     local rules_dir="$cursor_dir/rules"
+    local rendered_skill
 
     mkdir -p "$rules_dir"
 
     if [ -f "$SKILL_SOURCE" ]; then
-        cp "$SKILL_SOURCE" "$rules_dir/mintlify-search.md"
+        rendered_skill="$(mktemp)"
+        render_skill_file "$rendered_skill"
+        cp "$rendered_skill" "$rules_dir/mintlify-search.md"
+        rm -f "$rendered_skill"
         ok "Skill file installed to $rules_dir/mintlify-search.md"
-    fi
-
-    if [ -n "$API_KEY" ] && [ -n "$DOMAIN" ]; then
-        echo ""
-        echo -e "  ${DIM}Add to your shell profile or .envrc:${RESET}"
-        echo -e "    ${BOLD}export MSC_API_KEY=\"$API_KEY\"${RESET}"
-        echo -e "    ${BOLD}export MSC_DOMAIN=\"$DOMAIN\"${RESET}"
     fi
 }
 
-# ── Codex ────────────────────────────────────────────────
 setup_codex() {
     local codex_dir="$HOME/.codex"
+    local rendered_skill
 
     mkdir -p "$codex_dir"
 
     if [ -f "$SKILL_SOURCE" ]; then
-        cp "$SKILL_SOURCE" "$codex_dir/mintlify-search.md"
+        rendered_skill="$(mktemp)"
+        render_skill_file "$rendered_skill"
+        cp "$rendered_skill" "$codex_dir/mintlify-search.md"
+        rm -f "$rendered_skill"
         ok "Skill file installed to $codex_dir/mintlify-search.md"
-    fi
-
-    if [ -n "$API_KEY" ] && [ -n "$DOMAIN" ]; then
-        echo ""
-        echo -e "  ${DIM}Add to your shell profile or .envrc:${RESET}"
-        echo -e "    ${BOLD}export MSC_API_KEY=\"$API_KEY\"${RESET}"
-        echo -e "    ${BOLD}export MSC_DOMAIN=\"$DOMAIN\"${RESET}"
     fi
 }
 
-# ── Selection menu ───────────────────────────────────────
 echo "  Which agents do you want to configure?"
 echo ""
 echo "    1) Claude Code"
@@ -244,18 +176,20 @@ esac
 
 echo ""
 
-# ─────────────────────────────────────────────────────────
-# Step 4: Verification
-# ─────────────────────────────────────────────────────────
 info "Verification"
 echo ""
-"$INSTALL_DIR/$BINARY" doctor
+if [ -n "${MCP_URL:-}" ]; then
+    "$INSTALL_DIR/$BINARY" doctor --mcp-url "$MCP_URL"
+else
+    warn "Skipped verification — MCP URL not configured"
+fi
 echo ""
 
 info "Setup complete!"
 echo ""
 echo -e "  ${DIM}Quick start:${RESET}"
 echo "    msc search \"getting started\""
-echo "    msc search \"authentication\" --json --limit 3"
+echo "    msc search \"authentication\" --json"
+echo "    msc search \"authentication\" --raw"
 echo "    msc open \"quickstart\""
 echo ""

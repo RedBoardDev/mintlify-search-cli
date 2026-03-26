@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/redboard/mintlify-search-cli/internal/api"
+	"github.com/redboard/mintlify-search-cli/internal/mcp"
 )
 
 type Format int
@@ -17,7 +17,7 @@ const (
 	FormatJSON
 )
 
-func Render(w io.Writer, results []api.SearchResult, domain string, format Format) error {
+func Render(w io.Writer, results []mcp.SearchResult, format Format) error {
 	if len(results) == 0 {
 		_, err := fmt.Fprintln(w, "No results found.")
 		return err
@@ -27,11 +27,11 @@ func Render(w io.Writer, results []api.SearchResult, domain string, format Forma
 	case FormatJSON:
 		return renderJSON(w, results)
 	default:
-		return renderText(w, results, domain)
+		return renderText(w, results)
 	}
 }
 
-func renderJSON(w io.Writer, results []api.SearchResult) error {
+func renderJSON(w io.Writer, results []mcp.SearchResult) error {
 	data, err := json.Marshal(results)
 	if err != nil {
 		return err
@@ -43,7 +43,7 @@ func renderJSON(w io.Writer, results []api.SearchResult) error {
 	return err
 }
 
-func renderText(w io.Writer, results []api.SearchResult, domain string) error {
+func renderText(w io.Writer, results []mcp.SearchResult) error {
 	for i, r := range results {
 		if i > 0 {
 			if _, err := fmt.Fprintln(w); err != nil {
@@ -52,17 +52,12 @@ func renderText(w io.Writer, results []api.SearchResult, domain string) error {
 		}
 
 		title := r.Title
-		if r.Section != "" {
-			title = r.Title + " > " + r.Section
-		}
-
-		url := "https://" + domain + r.Path
 		snippet := truncate(r.Content, 200)
 
 		if _, err := fmt.Fprintf(w, "[%d] %s\n", i+1, title); err != nil {
 			return err
 		}
-		if _, err := fmt.Fprintf(w, "    %s\n", url); err != nil {
+		if _, err := fmt.Fprintf(w, "    %s\n", r.URL); err != nil {
 			return err
 		}
 		if snippet != "" {

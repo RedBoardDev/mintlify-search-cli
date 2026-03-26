@@ -10,15 +10,11 @@ func TestLoadSave_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 
-	// Override config path for testing.
 	origFn := configFilePathFn
 	configFilePathFn = func() (string, error) { return path, nil }
 	defer func() { configFilePathFn = origFn }()
 
-	cfg := &Config{
-		APIKey: "mint_dsc_test123",
-		Domain: "docs.example.com",
-	}
+	cfg := &Config{MCPURL: "https://docs.example.com/mcp"}
 
 	if err := Save(cfg); err != nil {
 		t.Fatalf("save: %v", err)
@@ -29,11 +25,8 @@ func TestLoadSave_RoundTrip(t *testing.T) {
 		t.Fatalf("load: %v", err)
 	}
 
-	if loaded.APIKey != cfg.APIKey {
-		t.Errorf("api_key: got %q, want %q", loaded.APIKey, cfg.APIKey)
-	}
-	if loaded.Domain != cfg.Domain {
-		t.Errorf("domain: got %q, want %q", loaded.Domain, cfg.Domain)
+	if loaded.MCPURL != cfg.MCPURL {
+		t.Errorf("mcp_url: got %q, want %q", loaded.MCPURL, cfg.MCPURL)
 	}
 }
 
@@ -45,15 +38,13 @@ func TestLoad_FileNotExist(t *testing.T) {
 	configFilePathFn = func() (string, error) { return path, nil }
 	defer func() { configFilePathFn = origFn }()
 
-	// Clear env vars to avoid interference.
-	t.Setenv(EnvAPIKey, "")
-	t.Setenv(EnvDomain, "")
+	t.Setenv(EnvMCPURL, "")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.APIKey != "" || cfg.Domain != "" {
+	if cfg.MCPURL != "" {
 		t.Errorf("expected zero config, got %+v", cfg)
 	}
 }
@@ -66,54 +57,19 @@ func TestLoad_EnvOverridesFile(t *testing.T) {
 	configFilePathFn = func() (string, error) { return path, nil }
 	defer func() { configFilePathFn = origFn }()
 
-	// Save a file-based config.
-	cfg := &Config{APIKey: "mint_file_key", Domain: "file.example.com"}
+	cfg := &Config{MCPURL: "https://file.example.com/mcp"}
 	if err := Save(cfg); err != nil {
 		t.Fatalf("save: %v", err)
 	}
 
-	// Set env vars — should override file values.
-	t.Setenv(EnvAPIKey, "mint_env_key")
-	t.Setenv(EnvDomain, "env.example.com")
+	t.Setenv(EnvMCPURL, "https://env.example.com/mcp")
 
 	loaded, err := Load()
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if loaded.APIKey != "mint_env_key" {
-		t.Errorf("api_key: got %q, want %q", loaded.APIKey, "mint_env_key")
-	}
-	if loaded.Domain != "env.example.com" {
-		t.Errorf("domain: got %q, want %q", loaded.Domain, "env.example.com")
-	}
-}
-
-func TestLoad_EnvPartialOverride(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.json")
-
-	origFn := configFilePathFn
-	configFilePathFn = func() (string, error) { return path, nil }
-	defer func() { configFilePathFn = origFn }()
-
-	cfg := &Config{APIKey: "mint_file_key", Domain: "file.example.com"}
-	if err := Save(cfg); err != nil {
-		t.Fatalf("save: %v", err)
-	}
-
-	// Only override domain via env.
-	t.Setenv(EnvAPIKey, "")
-	t.Setenv(EnvDomain, "env.example.com")
-
-	loaded, err := Load()
-	if err != nil {
-		t.Fatalf("load: %v", err)
-	}
-	if loaded.APIKey != "mint_file_key" {
-		t.Errorf("api_key should come from file: got %q", loaded.APIKey)
-	}
-	if loaded.Domain != "env.example.com" {
-		t.Errorf("domain should come from env: got %q", loaded.Domain)
+	if loaded.MCPURL != "https://env.example.com/mcp" {
+		t.Errorf("mcp_url: got %q, want %q", loaded.MCPURL, "https://env.example.com/mcp")
 	}
 }
 
@@ -125,18 +81,35 @@ func TestLoad_EnvOnlyNoFile(t *testing.T) {
 	configFilePathFn = func() (string, error) { return path, nil }
 	defer func() { configFilePathFn = origFn }()
 
-	t.Setenv(EnvAPIKey, "mint_env_only")
-	t.Setenv(EnvDomain, "env.example.com")
+	t.Setenv(EnvMCPURL, "https://env.example.com/mcp")
 
 	loaded, err := Load()
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if loaded.APIKey != "mint_env_only" {
-		t.Errorf("api_key: got %q, want %q", loaded.APIKey, "mint_env_only")
+	if loaded.MCPURL != "https://env.example.com/mcp" {
+		t.Errorf("mcp_url: got %q, want %q", loaded.MCPURL, "https://env.example.com/mcp")
 	}
-	if loaded.Domain != "env.example.com" {
-		t.Errorf("domain: got %q, want %q", loaded.Domain, "env.example.com")
+}
+
+func TestLoad_IgnoresLegacyFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	origFn := configFilePathFn
+	configFilePathFn = func() (string, error) { return path, nil }
+	defer func() { configFilePathFn = origFn }()
+
+	if err := os.WriteFile(path, []byte(`{"api_key":"mint_x","domain":"docs.example.com"}`), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	loaded, err := Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if loaded.MCPURL != "" {
+		t.Errorf("expected empty mcp_url, got %q", loaded.MCPURL)
 	}
 }
 
@@ -146,11 +119,14 @@ func TestValidate(t *testing.T) {
 		cfg     Config
 		wantErr bool
 	}{
-		{"valid", Config{APIKey: "mint_dsc_abc", Domain: "docs.example.com"}, false},
-		{"missing key", Config{Domain: "docs.example.com"}, true},
-		{"bad prefix", Config{APIKey: "sk_abc", Domain: "docs.example.com"}, true},
-		{"missing domain", Config{APIKey: "mint_dsc_abc"}, true},
-		{"empty", Config{}, true},
+		{"valid public", Config{MCPURL: "https://docs.example.com/mcp"}, false},
+		{"valid authed", Config{MCPURL: "https://docs.example.com/authed/mcp"}, false},
+		{"missing", Config{}, true},
+		{"http only", Config{MCPURL: "http://docs.example.com/mcp"}, true},
+		{"missing host", Config{MCPURL: "https:///mcp"}, true},
+		{"query", Config{MCPURL: "https://docs.example.com/mcp?x=1"}, true},
+		{"fragment", Config{MCPURL: "https://docs.example.com/mcp#x"}, true},
+		{"wrong path", Config{MCPURL: "https://docs.example.com/docs"}, true},
 	}
 
 	for _, tt := range tests {
@@ -171,7 +147,7 @@ func TestSave_CreatesDirectory(t *testing.T) {
 	configFilePathFn = func() (string, error) { return path, nil }
 	defer func() { configFilePathFn = origFn }()
 
-	cfg := &Config{APIKey: "mint_test", Domain: "example.com"}
+	cfg := &Config{MCPURL: "https://docs.example.com/mcp"}
 	if err := Save(cfg); err != nil {
 		t.Fatalf("save: %v", err)
 	}

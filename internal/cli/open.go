@@ -7,8 +7,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-
-	"github.com/redboard/mintlify-search-cli/internal/api"
 )
 
 func newOpenCmd() *cobra.Command {
@@ -26,20 +24,21 @@ func newOpenCmd() *cobra.Command {
 			}
 
 			query := strings.Join(args, " ")
-
-			client := api.NewClient(cfg.APIKey, cfg.Domain)
-			results, err := client.Search(cmd.Context(), query, 1)
+			results, err := fetchNormalizedResults(cmd, cfg, query)
 			if err != nil {
 				return fmt.Errorf("search failed: %w", err)
 			}
-			if len(results) == 0 {
-				fmt.Println("No results found.")
-				return nil
+
+			for _, result := range results {
+				if result.URL == "" {
+					continue
+				}
+				fmt.Printf("Opening: %s\n", result.URL)
+				return openBrowser(result.URL)
 			}
 
-			url := "https://" + cfg.Domain + results[0].Path
-			fmt.Printf("Opening: %s\n", url)
-			return openBrowser(url)
+			fmt.Println("No results found.")
+			return nil
 		},
 	}
 }

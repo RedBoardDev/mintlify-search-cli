@@ -1,44 +1,41 @@
 ---
 name: mintlify-search
-description: Search Mintlify documentation with `msc`. Prefer compact JSON output for agent workflows.
+description: Search Mintlify documentation with `msc` through a hosted MCP endpoint. Prefer normalized JSON for agent workflows.
 ---
 
 # Mintlify Search CLI (`msc`)
 
-Use `msc` to query Mintlify documentation directly from the terminal.
+Use `msc` to query Mintlify documentation through a hosted MCP endpoint.
 
 ## Setup
 
-Provide:
+Use this MCP endpoint:
 
-```
-MSC_API_KEY=mint_dsc_xxxxx
-MSC_DOMAIN=docs.example.com
+```bash
+__MSC_MCP_URL__
 ```
 
-Resolution order: `flags > env vars > config file`
+If the CLI is not configured yet, use `--mcp-url` directly in commands.
 
 ## Agent Usage
 
-- Prefer `msc search "<query>" --json --limit 3`
-- Start with short, specific queries
-- Increase `--limit` only when needed
-- Use `msc open "<query>"` only if the user explicitly wants a browser opened
-- Run `msc doctor` if config or connectivity looks wrong
+- Prefer `msc search "<query>" --mcp-url __MSC_MCP_URL__ --json`
+- Use short, specific queries first
+- Use `msc search "<query>" --mcp-url __MSC_MCP_URL__ --raw` only if raw MCP output is explicitly needed
+- Use `msc open "<query>" --mcp-url __MSC_MCP_URL__` only if the user explicitly wants a browser opened
+- Run `msc doctor --mcp-url __MSC_MCP_URL__` if config or connectivity looks wrong
 - Use `msc --help` or `msc <command> --help` when unsure
 
-`--json` returns minified, flat JSON optimized for LLM consumption.
+`--json` returns normalized minified JSON optimized for LLM consumption.
 
 ## Commands
 
 ```bash
-msc search "authentication"
-msc search "webhooks" --json --limit 3
-msc open "getting started"
-msc doctor
-msc config set-key <api-key>
-msc config set-domain <domain>
+msc search "authentication" --mcp-url __MSC_MCP_URL__ --json
+msc search "authentication" --mcp-url __MSC_MCP_URL__ --raw
+msc search "authentication" --mcp-url __MSC_MCP_URL__ --limit 3
+msc open "getting started" --mcp-url __MSC_MCP_URL__
+msc doctor --mcp-url __MSC_MCP_URL__
+msc config set-mcp-url __MSC_MCP_URL__
 msc config show
 ```
-
-For one-shot calls, `--api-key` and `--domain` override stored config.

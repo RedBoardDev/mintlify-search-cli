@@ -5,17 +5,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/redboard/mintlify-search-cli/internal/api"
+	"github.com/redboard/mintlify-search-cli/internal/mcp"
 )
 
-var testResults = []api.SearchResult{
-	{Title: "Authentication", Content: "How to set up auth", Path: "/auth"},
-	{Title: "OAuth", Content: "OAuth flow guide", Path: "/oauth", Section: "Setup"},
+var testResults = []mcp.SearchResult{
+	{Title: "Authentication", Content: "How to set up auth", URL: "https://docs.example.com/auth"},
+	{Title: "OAuth Setup", Content: "OAuth flow guide", URL: "https://docs.example.com/oauth"},
 }
 
 func TestRenderText(t *testing.T) {
 	var buf bytes.Buffer
-	if err := Render(&buf, testResults, "docs.example.com", FormatText); err != nil {
+	if err := Render(&buf, testResults, FormatText); err != nil {
 		t.Fatalf("render: %v", err)
 	}
 
@@ -27,14 +27,14 @@ func TestRenderText(t *testing.T) {
 	if !strings.Contains(out, "https://docs.example.com/auth") {
 		t.Error("missing result 1 URL")
 	}
-	if !strings.Contains(out, "OAuth > Setup") {
-		t.Error("missing section in result 2")
+	if !strings.Contains(out, "[2] OAuth Setup") {
+		t.Error("missing result 2 title")
 	}
 }
 
 func TestRenderJSON(t *testing.T) {
 	var buf bytes.Buffer
-	if err := Render(&buf, testResults, "docs.example.com", FormatJSON); err != nil {
+	if err := Render(&buf, testResults, FormatJSON); err != nil {
 		t.Fatalf("render: %v", err)
 	}
 
@@ -53,7 +53,7 @@ func TestRenderJSON(t *testing.T) {
 
 func TestRenderEmpty(t *testing.T) {
 	var buf bytes.Buffer
-	if err := Render(&buf, nil, "docs.example.com", FormatText); err != nil {
+	if err := Render(&buf, nil, FormatText); err != nil {
 		t.Fatalf("render: %v", err)
 	}
 	if !strings.Contains(buf.String(), "No results found") {

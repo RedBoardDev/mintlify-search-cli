@@ -4,35 +4,28 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-const (
-	EnvAPIKey = "MSC_API_KEY" //nolint:gosec // Env var name, not a credential.
-	EnvDomain = "MSC_DOMAIN"
-)
+const EnvMCPURL = "MSC_MCP_URL"
 
 var configFilePathFn = ConfigFilePath // Indirection for testing.
 
 type Config struct {
-	APIKey string `json:"api_key"`
-	Domain string `json:"domain"`
+	MCPURL string `json:"mcp_url"`
 }
 
-// Precedence: env vars > config file. Flag overrides are in the CLI layer.
 func Load() (*Config, error) {
 	cfg, err := loadFile()
 	if err != nil {
 		return nil, err
 	}
 
-	if v := os.Getenv(EnvAPIKey); v != "" {
-		cfg.APIKey = v
-	}
-	if v := os.Getenv(EnvDomain); v != "" {
-		cfg.Domain = v
+	if v := os.Getenv(EnvMCPURL); v != "" {
+		cfg.MCPURL = v
 	}
 
 	return cfg, nil
@@ -83,18 +76,36 @@ func Save(cfg *Config) error {
 func (c *Config) Validate() error {
 	var errs []string
 
-	if c.APIKey == "" {
-		errs = append(errs, "api_key is not set (set MSC_API_KEY or run: msc config set-key <key>)")
-	} else if !strings.HasPrefix(c.APIKey, "mint_") {
-		errs = append(errs, "api_key does not start with 'mint_' — check your key")
-	}
-
-	if c.Domain == "" {
-		errs = append(errs, "domain is not set (set MSC_DOMAIN or run: msc config set-domain <domain>)")
+	if c.MCPURL == "" {
+		errs = append(errs, "mcp_url is not set (set MSC_MCP_URL or run: msc config set-mcp-url <url>)")
+	} else if err := validateMCPURL(c.MCPURL); err != nil {
+		errs = append(errs, err.Error())
 	}
 
 	if len(errs) > 0 {
 		return fmt.Errorf("invalid config:\n  - %s", strings.Join(errs, "\n  - "))
 	}
 	return nil
+}
+
+func validateMCPURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("mcp_url is invalid: %w", err)
+	}
+
+	switch {
+	case u.Scheme != "https":
+		return errors.New("mcp_url must use https")
+	case u.Host == "":
+		return errors.New("mcp_url must include a host")
+	case u.RawQuery != "":
+		return errors.New("mcp_url must not include a query string")
+	case u.Fragment != "":
+		return errors.New("mcp_url must not include a fragment")
+	case u.Path != "/mcp" && u.Path != "/authed/mcp":
+		return errors.New("mcp_url must end with /mcp or /authed/mcp")
+	default:
+		return nil
+	}
 }
