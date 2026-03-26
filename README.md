@@ -7,7 +7,7 @@
 ### Quick install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/redboard/mintlify-search-cli/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/redboarddev/mintlify-search-cli/main/install.sh | bash
 ```
 
 The installer builds `msc`, installs it to `/usr/local/bin`, asks for your MCP URL, and can install the agent skill for Claude Code, Cursor, or Codex.
@@ -15,7 +15,7 @@ The installer builds `msc`, installs it to `/usr/local/bin`, asks for your MCP U
 ### From source
 
 ```bash
-git clone https://github.com/redboard/mintlify-search-cli.git
+git clone https://github.com/redboarddev/mintlify-search-cli.git
 cd mintlify-search-cli
 make install
 ```
