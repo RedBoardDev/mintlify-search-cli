@@ -3,8 +3,13 @@ set -euo pipefail
 REPO="redboard/mintlify-search-cli"
 BINARY="msc"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SKILL_SOURCE="$SCRIPT_DIR/skill.md"
+SCRIPT_DIR=""
+if [ -n "${BASH_SOURCE[0]-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+elif [ -f "$PWD/go.mod" ] && [ -f "$PWD/skill.md" ]; then
+    SCRIPT_DIR="$PWD"
+fi
+SKILL_SOURCE=""
 
 if [ -t 1 ]; then
     BOLD='\033[1m' DIM='\033[2m' GREEN='\033[32m' YELLOW='\033[33m'
@@ -18,6 +23,18 @@ ok()    { echo -e "  ${GREEN}✓${RESET} $1"; }
 warn()  { echo -e "  ${YELLOW}!${RESET} $1"; }
 fail()  { echo -e "  ${RED}✗${RESET} $1"; }
 ask()   { echo -en "  ${BOLD}$1${RESET} "; }
+read_from_tty() {
+    local var_name="$1"
+    local value=""
+
+    if [ ! -r /dev/tty ]; then
+        fail "Interactive input requires /dev/tty. Re-run with MSC_MCP_URL set."
+        exit 1
+    fi
+
+    IFS= read -r value < /dev/tty
+    printf -v "$var_name" '%s' "$value"
+}
 
 render_skill_file() {
     local output="$1"
@@ -40,7 +57,7 @@ if ! command -v go &> /dev/null; then
     exit 1
 fi
 
-if [ -f "$SCRIPT_DIR/go.mod" ]; then
+if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/go.mod" ]; then
     BUILD_DIR="$SCRIPT_DIR"
 else
     BUILD_DIR=$(mktemp -d)
@@ -48,6 +65,8 @@ else
     echo "  Cloning repository..."
     git clone --depth 1 "https://github.com/$REPO.git" "$BUILD_DIR"
 fi
+
+SKILL_SOURCE="$BUILD_DIR/skill.md"
 
 cd "$BUILD_DIR"
 VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
@@ -66,7 +85,7 @@ info "Configuration"
 CURRENT_MCP_URL="${MSC_MCP_URL:-}"
 if [ -z "$CURRENT_MCP_URL" ]; then
     ask "Mintlify MCP URL (https://<docs>/mcp or /authed/mcp):"
-    read -r MCP_URL
+    read_from_tty MCP_URL
     if [ -z "$MCP_URL" ]; then
         warn "Skipped — set later with: msc config set-mcp-url <url>"
     else
@@ -142,7 +161,7 @@ echo "    4) All"
 echo "    5) None (skip)"
 echo ""
 ask "Choose [1-5]:"
-read -r AGENT_CHOICE
+read_from_tty AGENT_CHOICE
 
 echo ""
 
