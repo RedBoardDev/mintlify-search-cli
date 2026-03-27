@@ -1,8 +1,10 @@
+#!/usr/bin/env bash
 set -euo pipefail
 
 REPO="redboard/mintlify-search-cli"
 BINARY="msc"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
+NONINTERACTIVE="${NONINTERACTIVE:-}"
 SCRIPT_DIR=""
 if [ -n "${BASH_SOURCE[0]-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,13 +25,32 @@ ok()    { echo -e "  ${GREEN}✓${RESET} $1"; }
 warn()  { echo -e "  ${YELLOW}!${RESET} $1"; }
 fail()  { echo -e "  ${RED}✗${RESET} $1"; }
 ask()   { echo -en "  ${BOLD}$1${RESET} "; }
+
+abort() {
+    fail "$1"
+    exit 1
+}
+
+require_bash() {
+    if [ -z "${BASH_VERSION:-}" ]; then
+        abort "Bash is required to run this installer."
+    fi
+}
+
+is_noninteractive() {
+    [ -n "$NONINTERACTIVE" ]
+}
+
 read_from_tty() {
     local var_name="$1"
     local value=""
 
+    if is_noninteractive; then
+        abort "Interactive input is disabled in NONINTERACTIVE mode."
+    fi
+
     if [ ! -r /dev/tty ]; then
-        fail "Interactive input requires /dev/tty. Re-run with MSC_MCP_URL set."
-        exit 1
+        abort "Interactive input requires /dev/tty. Re-run with MSC_MCP_URL set."
     fi
 
     IFS= read -r value < /dev/tty
@@ -50,11 +71,12 @@ render_skill_file() {
     fi
 }
 
+require_bash
+
 info "Installing msc"
 
 if ! command -v go &> /dev/null; then
-    fail "Go is not installed. Install Go 1.24+ first."
-    exit 1
+    abort "Go is not installed. Install Go 1.24+ first."
 fi
 
 if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/go.mod" ]; then
@@ -84,6 +106,9 @@ info "Configuration"
 
 CURRENT_MCP_URL="${MSC_MCP_URL:-}"
 if [ -z "$CURRENT_MCP_URL" ]; then
+    if is_noninteractive; then
+        abort "MSC_MCP_URL is required in NONINTERACTIVE mode."
+    fi
     ask "Mintlify MCP URL (https://<docs>/mcp or /authed/mcp):"
     read_from_tty MCP_URL
     if [ -z "$MCP_URL" ]; then
@@ -161,7 +186,12 @@ echo "    4) All"
 echo "    5) None (skip)"
 echo ""
 ask "Choose [1-5]:"
-read_from_tty AGENT_CHOICE
+if is_noninteractive; then
+    AGENT_CHOICE="5"
+    echo "5"
+else
+    read_from_tty AGENT_CHOICE
+fi
 
 echo ""
 

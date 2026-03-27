@@ -12,12 +12,32 @@ curl -fsSL https://raw.githubusercontent.com/redboarddev/mintlify-search-cli/mai
 
 The installer builds `msc`, installs it to `/usr/local/bin`, asks for your MCP URL, and can install the agent skill for Claude Code, Cursor, or Codex.
 
+The installer is designed to work with `curl | bash`. For non-interactive usage, set `MSC_MCP_URL` first:
+
+```bash
+MSC_MCP_URL="https://docs.example.com/mcp" \
+curl -fsSL https://raw.githubusercontent.com/redboarddev/mintlify-search-cli/main/install.sh | bash
+```
+
 ### From source
 
 ```bash
 git clone https://github.com/redboarddev/mintlify-search-cli.git
 cd mintlify-search-cli
 make install
+```
+
+### Uninstall
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/redboarddev/mintlify-search-cli/main/uninstall.sh | bash
+```
+
+For non-interactive uninstall:
+
+```bash
+NONINTERACTIVE=1 REMOVE_SKILLS=1 REMOVE_CONFIG=1 REMOVE_CACHE=1 \
+curl -fsSL https://raw.githubusercontent.com/redboarddev/mintlify-search-cli/main/uninstall.sh | bash
 ```
 
 ### Requirements
