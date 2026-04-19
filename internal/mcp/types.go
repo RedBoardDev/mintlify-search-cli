@@ -2,19 +2,18 @@ package mcp
 
 import "encoding/json"
 
-type Discovery struct {
-	Server       ServerInfo          `json:"server"`
-	Capabilities DiscoveryCapability `json:"capabilities"`
-}
+// ProtocolVersion is the MCP protocol version advertised in initialize.
+// The server echoes back the version the client sends; we advertise the
+// latest stable spec version to unlock newer features where available.
+const ProtocolVersion = "2025-06-18"
+
+// ClientName is sent in initialize.clientInfo. It identifies this binary
+// in server-side logs.
+const ClientName = "msc"
 
 type ServerInfo struct {
-	Name      string `json:"name"`
-	Version   string `json:"version"`
-	Transport string `json:"transport"`
-}
-
-type DiscoveryCapability struct {
-	Tools map[string]ToolDefinition `json:"tools"`
+	Name    string `json:"name"`
+	Version string `json:"version"`
 }
 
 type ToolDefinition struct {
@@ -34,10 +33,23 @@ type SchemaProperty struct {
 	Description string `json:"description"`
 }
 
-type SearchResult struct {
-	Title   string `json:"title"`
-	URL     string `json:"url"`
-	Content string `json:"content"`
+type Resource struct {
+	URI         string `json:"uri"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	MimeType    string `json:"mimeType"`
+}
+
+type ResourceContent struct {
+	URI      string `json:"uri"`
+	MimeType string `json:"mimeType"`
+	Text     string `json:"text,omitempty"`
+	Blob     string `json:"blob,omitempty"`
+}
+
+type ContentBlock struct {
+	Type string `json:"type"`
+	Text string `json:"text,omitempty"`
 }
 
 type rpcRequest struct {
@@ -59,25 +71,26 @@ type RPCError struct {
 	Message string `json:"message"`
 }
 
-type InitializeResult struct {
-	ProtocolVersion string             `json:"protocolVersion"`
-	Capabilities    InitializeFeatures `json:"capabilities"`
-	ServerInfo      ServerInfo         `json:"serverInfo"`
-}
+func (e *RPCError) Error() string { return e.Message }
 
-type InitializeFeatures struct {
-	Tools map[string]json.RawMessage `json:"tools"`
+type InitializeResult struct {
+	ProtocolVersion string     `json:"protocolVersion"`
+	ServerInfo      ServerInfo `json:"serverInfo"`
 }
 
 type ToolsListResult struct {
 	Tools []ToolDefinition `json:"tools"`
 }
 
-type ToolCallResult struct {
-	Content []ContentBlock `json:"content"`
+type ResourcesListResult struct {
+	Resources []Resource `json:"resources"`
 }
 
-type ContentBlock struct {
-	Type string `json:"type"`
-	Text string `json:"text,omitempty"`
+type ResourceReadResult struct {
+	Contents []ResourceContent `json:"contents"`
+}
+
+type ToolCallResult struct {
+	Content []ContentBlock `json:"content"`
+	IsError bool           `json:"isError,omitempty"`
 }

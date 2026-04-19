@@ -1,191 +1,141 @@
 package cli
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 
-	"github.com/redboard/mintlify-search-cli/internal/cache"
+	"github.com/redboard/mintlify-search-cli/internal/cliapp"
 	"github.com/redboard/mintlify-search-cli/internal/config"
 	"github.com/redboard/mintlify-search-cli/internal/mcp"
-	"github.com/redboard/mintlify-search-cli/internal/output"
+	"github.com/redboard/mintlify-search-cli/internal/render"
 )
 
 func newSearchCmd() *cobra.Command {
 	var (
-		jsonFlag bool
-		rawFlag  bool
-		limit    int
+		asJSON bool
+		asText bool
+		asRaw  bool
+		limit  int
 	)
 
 	cmd := &cobra.Command{
 		Use:   "search <query>",
-		Short: "Search documentation via Mintlify MCP",
-		Args:  cobra.MinimumNArgs(1),
+		Short: "Semantic search of the documentation",
+		Long: `search runs a semantic query against the Mintlify MCP server and prints the top results.
+
+Default output is minified JSON (LLM-friendly). Use --text for a human listing, or --raw
+to inspect the unparsed MCP payload.
+
+Examples:
+  msc search "rate limiting"
+  msc search "create customer" --limit 3
+  msc search "auth" --text
+`,
+		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if jsonFlag && rawFlag {
-				return fmt.Errorf("--json and --raw cannot be used together")
-			}
-			if rawFlag && cmd.Flags().Changed("limit") {
-				return fmt.Errorf("--raw and --limit cannot be used together")
-			}
-
-			cfg, err := resolveConfig(cmd)
-			if err != nil {
-				return err
-			}
-			if err := cfg.Validate(); err != nil {
-				return err
-			}
-
-			query := strings.Join(args, " ")
-			mode := searchModeText
-			if jsonFlag {
-				mode = searchModeJSON
-			}
-			if rawFlag {
-				mode = searchModeRaw
-			}
-
-			return runSearch(cmd, cfg, query, limit, mode)
+			return runSearch(cmd, args, searchFlags{json: asJSON, text: asText, raw: asRaw, limit: limit})
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonFlag, "json", false, "Output normalized minified JSON")
-	cmd.Flags().BoolVar(&rawFlag, "raw", false, "Output raw MCP JSON-RPC payload")
-	cmd.Flags().IntVar(&limit, "limit", 5, "Max number of results")
-
+	cmd.Flags().BoolVar(&asJSON, "json", false, "output minified JSON (default)")
+	cmd.Flags().BoolVar(&asText, "text", false, "output human-readable listing")
+	cmd.Flags().BoolVar(&asRaw, "raw", false, "output the raw MCP result payload")
+	cmd.Flags().IntVarP(&limit, "limit", "l", 0, "cap the number of results (default from config, max 20)")
 	return cmd
 }
 
-type searchMode int
+type searchFlags struct {
+	json, text, raw bool
+	limit           int
+}
 
-const (
-	searchModeText searchMode = iota
-	searchModeJSON
-	searchModeRaw
-)
-
-func runSearch(cmd *cobra.Command, cfg *config.Config, query string, limit int, mode searchMode) error {
-	if mode == searchModeRaw {
-		return runRawSearch(cmd, cfg, query)
+func runSearch(cmd *cobra.Command, args []string, f searchFlags) error {
+	if err := exclusiveFormat(f.json, f.text, f.raw); err != nil {
+		return err
+	}
+	format := pickFormat(f.json, f.text, f.raw)
+	if f.raw && f.limit > 0 {
+		return cliapp.Newf(cliapp.ExitUsage, "--raw is incompatible with --limit")
 	}
 
-	results, err := loadCachedResults(cfg.MCPURL, query, limit)
+	query := strings.TrimSpace(strings.Join(args, " "))
+	if query == "" {
+		return cliapp.Newf(cliapp.ExitUsage, "search query must be non-empty")
+	}
+
+	app, err := cliapp.FromCmd(cmd, format)
 	if err != nil {
 		return err
 	}
-	if results == nil {
-		results, err = fetchNormalizedResults(cmd, cfg, query)
-		if err != nil {
-			return err
+
+	limit := f.limit
+	if limit <= 0 {
+		limit = app.Cfg.DefaultLimit
+	}
+	if limit > config.MaxSearchLimit {
+		limit = config.MaxSearchLimit
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), app.Timeout)
+	defer cancel()
+
+	toolName, err := app.ResolveSearchTool(ctx)
+	if err != nil {
+		return err
+	}
+	resp, err := app.Client.CallTool(ctx, toolName, map[string]any{"query": query})
+	if err != nil {
+		return cliapp.Wrap(cliapp.ExitRuntime, fmt.Errorf("search: %w", err))
+	}
+
+	if f.raw {
+		return app.Renderer.Render(os.Stdout, render.RawPayload{Result: resp.Result})
+	}
+
+	blocks, err := mcp.ParseSearchBlocks(resp)
+	if err != nil {
+		return cliapp.Wrap(cliapp.ExitRuntime, fmt.Errorf("search: %w", err))
+	}
+	if len(blocks) > limit {
+		blocks = blocks[:limit]
+	}
+	payload := render.SearchPayload{Query: query, Results: make([]render.SearchEntry, 0, len(blocks))}
+	for _, b := range blocks {
+		payload.Results = append(payload.Results, render.SearchEntry{
+			Title:   b.Title,
+			URL:     b.URL,
+			Page:    b.Page,
+			Content: b.Content,
+		})
+	}
+	return app.Renderer.Render(os.Stdout, payload)
+}
+
+func exclusiveFormat(json, text, raw bool) error {
+	count := 0
+	for _, b := range []bool{json, text, raw} {
+		if b {
+			count++
 		}
-		results = applyLimit(results, limit)
-		_ = saveCachedResults(cfg.MCPURL, query, limit, results)
 	}
-
-	format := output.FormatText
-	if mode == searchModeJSON {
-		format = output.FormatJSON
+	if count > 1 {
+		return cliapp.Newf(cliapp.ExitUsage, "--json, --text and --raw are mutually exclusive")
 	}
-	return output.Render(os.Stdout, results, format)
+	return nil
 }
 
-func runRawSearch(cmd *cobra.Command, cfg *config.Config, query string) error {
-	client := mcp.NewClient(cfg.MCPURL)
-	discovery, err := client.Discover(cmd.Context())
-	if err != nil {
-		return fmt.Errorf("discovering mcp server: %w", err)
+func pickFormat(asJSON, asText, asRaw bool) render.FormatKind {
+	switch {
+	case asRaw:
+		return render.FormatRaw
+	case asText:
+		return render.FormatText
+	default:
+		return render.FormatJSON
 	}
-
-	tool, err := mcp.FindSearchTool(discovery)
-	if err != nil {
-		return fmt.Errorf("finding search tool: %w", err)
-	}
-
-	rawResp, err := client.CallTool(cmd.Context(), tool.Name, map[string]any{"query": query})
-	if err != nil {
-		return fmt.Errorf("calling search tool: %w", err)
-	}
-
-	data, err := mcp.MarshalMinified(rawResp)
-	if err != nil {
-		return err
-	}
-	if _, err := os.Stdout.Write(data); err != nil {
-		return err
-	}
-	_, err = fmt.Fprintln(os.Stdout)
-	return err
 }
 
-func fetchNormalizedResults(cmd *cobra.Command, cfg *config.Config, query string) ([]mcp.SearchResult, error) {
-	client := mcp.NewClient(cfg.MCPURL)
-	discovery, err := client.Discover(cmd.Context())
-	if err != nil {
-		return nil, fmt.Errorf("discovering mcp server: %w", err)
-	}
-
-	tool, err := mcp.FindSearchTool(discovery)
-	if err != nil {
-		return nil, fmt.Errorf("finding search tool: %w", err)
-	}
-
-	rawResp, err := client.CallTool(cmd.Context(), tool.Name, map[string]any{"query": query})
-	if err != nil {
-		return nil, fmt.Errorf("calling search tool: %w", err)
-	}
-
-	call, err := mcp.ParseToolCallResult(rawResp)
-	if err != nil {
-		return nil, fmt.Errorf("decoding search results: %w", err)
-	}
-
-	return mcp.NormalizeSearchResults(call), nil
-}
-
-func applyLimit(results []mcp.SearchResult, limit int) []mcp.SearchResult {
-	if limit <= 0 || len(results) <= limit {
-		return results
-	}
-	return results[:limit]
-}
-
-func loadCachedResults(mcpURL, query string, limit int) ([]mcp.SearchResult, error) {
-	cacheDir, _ := config.CacheDir()
-	if cacheDir == "" {
-		return nil, nil
-	}
-
-	c := cache.New(cacheDir)
-	key := cache.Key(mcpURL, query, strconv.Itoa(limit))
-	data, err := c.Get(key)
-	if err != nil || data == nil {
-		return nil, err
-	}
-
-	var results []mcp.SearchResult
-	if err := json.Unmarshal(data, &results); err != nil {
-		return nil, err
-	}
-	return results, nil
-}
-
-func saveCachedResults(mcpURL, query string, limit int, results []mcp.SearchResult) error {
-	cacheDir, _ := config.CacheDir()
-	if cacheDir == "" {
-		return nil
-	}
-
-	data, err := json.Marshal(results)
-	if err != nil {
-		return nil
-	}
-
-	c := cache.New(cacheDir)
-	return c.Set(cache.Key(mcpURL, query, strconv.Itoa(limit)), data)
-}

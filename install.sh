@@ -92,7 +92,7 @@ SKILL_SOURCE="$BUILD_DIR/skill.md"
 
 cd "$BUILD_DIR"
 VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
-go build -ldflags "-s -w -X github.com/$REPO/internal/cli.Version=$VERSION" -o "$BINARY" ./cmd/msc
+go build -ldflags "-s -w -X github.com/$REPO/internal/cli.Version=$VERSION -X github.com/$REPO/internal/mcp.ClientVersion=$VERSION" -o "$BINARY" ./cmd/msc
 
 install -m 755 "$BINARY" "$INSTALL_DIR/$BINARY" 2>/dev/null || {
     warn "Cannot write to $INSTALL_DIR, trying with sudo..."
@@ -112,15 +112,15 @@ if [ -z "$CURRENT_MCP_URL" ]; then
     ask "Mintlify MCP URL (https://<docs>/mcp or /authed/mcp):"
     read_from_tty MCP_URL
     if [ -z "$MCP_URL" ]; then
-        warn "Skipped — set later with: msc config set-mcp-url <url>"
+        warn "Skipped — set later with: msc config set mcp_url <url>"
     else
-        "$INSTALL_DIR/$BINARY" config set-mcp-url "$MCP_URL" > /dev/null
+        "$INSTALL_DIR/$BINARY" config set mcp_url "$MCP_URL" > /dev/null
         ok "MCP URL saved to config file"
     fi
 else
     MCP_URL="$CURRENT_MCP_URL"
     ok "MCP URL detected from MSC_MCP_URL env var"
-    "$INSTALL_DIR/$BINARY" config set-mcp-url "$MCP_URL" > /dev/null
+    "$INSTALL_DIR/$BINARY" config set mcp_url "$MCP_URL" > /dev/null
     ok "MCP URL saved to config file"
 fi
 
@@ -237,8 +237,9 @@ echo ""
 info "Setup complete!"
 echo ""
 echo -e "  ${DIM}Quick start:${RESET}"
-echo "    msc search \"getting started\""
-echo "    msc search \"authentication\" --json"
-echo "    msc search \"authentication\" --raw"
-echo "    msc open \"quickstart\""
+echo "    msc search \"getting started\"       # JSON (default)"
+echo "    msc search \"authentication\" --text"
+echo "    msc open \"quickstart\"              # full markdown of top hit"
+echo "    msc read /overview                   # page by path"
+echo "    msc fs \"tree / -L 2\"                # escape hatch"
 echo ""

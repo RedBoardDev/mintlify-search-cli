@@ -6,134 +6,124 @@ import (
 	"testing"
 )
 
-func TestLoadSave_RoundTrip(t *testing.T) {
+func withTempConfig(t *testing.T) string {
+	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
-
-	origFn := configFilePathFn
+	prev := configFilePathFn
 	configFilePathFn = func() (string, error) { return path, nil }
-	defer func() { configFilePathFn = origFn }()
-
-	cfg := &Config{MCPURL: "https://docs.example.com/mcp"}
-
-	if err := Save(cfg); err != nil {
-		t.Fatalf("save: %v", err)
+	t.Cleanup(func() { configFilePathFn = prev })
+	for _, k := range []string{EnvMCPURL, EnvDefaultLimit, EnvCacheEnabled, EnvCacheTTL, EnvToolsCacheTTL} {
+		t.Setenv(k, "")
 	}
+	return path
+}
 
-	loaded, err := Load()
+func TestLoad_MissingFileReturnsDefaults(t *testing.T) {
+	withTempConfig(t)
+	cfg, err := Load()
 	if err != nil {
-		t.Fatalf("load: %v", err)
+		t.Fatalf("Load: %v", err)
 	}
-
-	if loaded.MCPURL != cfg.MCPURL {
-		t.Errorf("mcp_url: got %q, want %q", loaded.MCPURL, cfg.MCPURL)
+	if cfg.DefaultLimit != DefaultLimit {
+		t.Errorf("DefaultLimit = %d, want %d", cfg.DefaultLimit, DefaultLimit)
+	}
+	if cfg.Cache.TTLSeconds != DefaultCacheTTLSeconds {
+		t.Errorf("Cache.TTLSeconds = %d, want %d", cfg.Cache.TTLSeconds, DefaultCacheTTLSeconds)
+	}
+	if cfg.Cache.ToolsTTLSeconds != DefaultToolsTTLSeconds {
+		t.Errorf("Cache.ToolsTTLSeconds = %d", cfg.Cache.ToolsTTLSeconds)
 	}
 }
 
-func TestLoad_FileNotExist(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "nonexistent", "config.json")
-
-	origFn := configFilePathFn
-	configFilePathFn = func() (string, error) { return path, nil }
-	defer func() { configFilePathFn = origFn }()
-
-	t.Setenv(EnvMCPURL, "")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestSaveLoadRoundtrip(t *testing.T) {
+	withTempConfig(t)
+	in := &Config{
+		MCPURL:       "https://api-documentation.kare-app.fr/mcp",
+		DefaultLimit: 10,
+		Cache: CacheConfig{
+			Enabled:         true,
+			TTLSeconds:      1200,
+			ToolsTTLSeconds: 3600,
+		},
 	}
-	if cfg.MCPURL != "" {
-		t.Errorf("expected zero config, got %+v", cfg)
+	if err := Save(in); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	out, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if out.MCPURL != in.MCPURL || out.DefaultLimit != 10 || !out.Cache.Enabled || out.Cache.TTLSeconds != 1200 || out.Cache.ToolsTTLSeconds != 3600 {
+		t.Fatalf("round-trip mismatch: %+v", out)
 	}
 }
 
 func TestLoad_EnvOverridesFile(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.json")
-
-	origFn := configFilePathFn
-	configFilePathFn = func() (string, error) { return path, nil }
-	defer func() { configFilePathFn = origFn }()
-
-	cfg := &Config{MCPURL: "https://file.example.com/mcp"}
-	if err := Save(cfg); err != nil {
-		t.Fatalf("save: %v", err)
-	}
+	path := withTempConfig(t)
+	_ = os.WriteFile(path, []byte(`{"mcp_url":"https://file.example.com/mcp"}`), 0o600)
 
 	t.Setenv(EnvMCPURL, "https://env.example.com/mcp")
+	t.Setenv(EnvDefaultLimit, "7")
+	t.Setenv(EnvCacheEnabled, "1")
+	t.Setenv(EnvCacheTTL, "900")
+	t.Setenv(EnvToolsCacheTTL, "7200")
 
-	loaded, err := Load()
+	cfg, err := Load()
 	if err != nil {
-		t.Fatalf("load: %v", err)
+		t.Fatalf("Load: %v", err)
 	}
-	if loaded.MCPURL != "https://env.example.com/mcp" {
-		t.Errorf("mcp_url: got %q, want %q", loaded.MCPURL, "https://env.example.com/mcp")
+	if cfg.MCPURL != "https://env.example.com/mcp" {
+		t.Errorf("MCPURL = %q", cfg.MCPURL)
+	}
+	if cfg.DefaultLimit != 7 {
+		t.Errorf("DefaultLimit = %d", cfg.DefaultLimit)
+	}
+	if !cfg.Cache.Enabled {
+		t.Errorf("expected cache enabled from env")
+	}
+	if cfg.Cache.TTLSeconds != 900 {
+		t.Errorf("TTLSeconds = %d", cfg.Cache.TTLSeconds)
+	}
+	if cfg.Cache.ToolsTTLSeconds != 7200 {
+		t.Errorf("ToolsTTLSeconds = %d", cfg.Cache.ToolsTTLSeconds)
 	}
 }
 
-func TestLoad_EnvOnlyNoFile(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "nonexistent", "config.json")
+func TestLoad_IgnoresUnknownFields(t *testing.T) {
+	path := withTempConfig(t)
+	_ = os.WriteFile(path, []byte(`{"api_key":"x","domain":"y","mcp_url":"https://docs.example.com/mcp"}`), 0o600)
 
-	origFn := configFilePathFn
-	configFilePathFn = func() (string, error) { return path, nil }
-	defer func() { configFilePathFn = origFn }()
-
-	t.Setenv(EnvMCPURL, "https://env.example.com/mcp")
-
-	loaded, err := Load()
+	cfg, err := Load()
 	if err != nil {
-		t.Fatalf("load: %v", err)
+		t.Fatalf("Load: %v", err)
 	}
-	if loaded.MCPURL != "https://env.example.com/mcp" {
-		t.Errorf("mcp_url: got %q, want %q", loaded.MCPURL, "https://env.example.com/mcp")
-	}
-}
-
-func TestLoad_IgnoresLegacyFields(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.json")
-
-	origFn := configFilePathFn
-	configFilePathFn = func() (string, error) { return path, nil }
-	defer func() { configFilePathFn = origFn }()
-
-	if err := os.WriteFile(path, []byte(`{"api_key":"mint_x","domain":"docs.example.com"}`), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-
-	loaded, err := Load()
-	if err != nil {
-		t.Fatalf("load: %v", err)
-	}
-	if loaded.MCPURL != "" {
-		t.Errorf("expected empty mcp_url, got %q", loaded.MCPURL)
+	if cfg.MCPURL != "https://docs.example.com/mcp" {
+		t.Errorf("MCPURL = %q", cfg.MCPURL)
 	}
 }
 
 func TestValidate(t *testing.T) {
-	tests := []struct {
+	cases := []struct {
 		name    string
 		cfg     Config
 		wantErr bool
 	}{
-		{"valid public", Config{MCPURL: "https://docs.example.com/mcp"}, false},
-		{"valid authed", Config{MCPURL: "https://docs.example.com/authed/mcp"}, false},
-		{"missing", Config{}, true},
-		{"http only", Config{MCPURL: "http://docs.example.com/mcp"}, true},
-		{"missing host", Config{MCPURL: "https:///mcp"}, true},
-		{"query", Config{MCPURL: "https://docs.example.com/mcp?x=1"}, true},
-		{"fragment", Config{MCPURL: "https://docs.example.com/mcp#x"}, true},
-		{"wrong path", Config{MCPURL: "https://docs.example.com/docs"}, true},
+		{"valid public", Config{MCPURL: "https://docs.example.com/mcp", DefaultLimit: 5, Cache: CacheConfig{TTLSeconds: 600, ToolsTTLSeconds: 86400}}, false},
+		{"valid authed", Config{MCPURL: "https://docs.example.com/authed/mcp", DefaultLimit: 10, Cache: CacheConfig{TTLSeconds: 600, ToolsTTLSeconds: 86400}}, false},
+		{"missing url", Config{DefaultLimit: 5, Cache: CacheConfig{TTLSeconds: 600, ToolsTTLSeconds: 86400}}, true},
+		{"http only", Config{MCPURL: "http://x.com/mcp", DefaultLimit: 5, Cache: CacheConfig{TTLSeconds: 600, ToolsTTLSeconds: 86400}}, true},
+		{"query string", Config{MCPURL: "https://x.com/mcp?a=b", DefaultLimit: 5, Cache: CacheConfig{TTLSeconds: 600, ToolsTTLSeconds: 86400}}, true},
+		{"fragment", Config{MCPURL: "https://x.com/mcp#f", DefaultLimit: 5, Cache: CacheConfig{TTLSeconds: 600, ToolsTTLSeconds: 86400}}, true},
+		{"wrong path", Config{MCPURL: "https://x.com/docs", DefaultLimit: 5, Cache: CacheConfig{TTLSeconds: 600, ToolsTTLSeconds: 86400}}, true},
+		{"limit too high", Config{MCPURL: "https://x.com/mcp", DefaultLimit: 100, Cache: CacheConfig{TTLSeconds: 600, ToolsTTLSeconds: 86400}}, true},
+		{"limit zero", Config{MCPURL: "https://x.com/mcp", DefaultLimit: 0, Cache: CacheConfig{TTLSeconds: 600, ToolsTTLSeconds: 86400}}, true},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := tt.cfg.Validate()
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.cfg.Validate()
+			if (err != nil) != tc.wantErr {
+				t.Errorf("Validate err=%v wantErr=%v", err, tc.wantErr)
 			}
 		})
 	}
@@ -142,16 +132,14 @@ func TestValidate(t *testing.T) {
 func TestSave_CreatesDirectory(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "sub", "deep", "config.json")
-
-	origFn := configFilePathFn
+	prev := configFilePathFn
 	configFilePathFn = func() (string, error) { return path, nil }
-	defer func() { configFilePathFn = origFn }()
+	t.Cleanup(func() { configFilePathFn = prev })
 
-	cfg := &Config{MCPURL: "https://docs.example.com/mcp"}
+	cfg := &Config{MCPURL: "https://docs.example.com/mcp", DefaultLimit: 5}
 	if err := Save(cfg); err != nil {
-		t.Fatalf("save: %v", err)
+		t.Fatalf("Save: %v", err)
 	}
-
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("config file not created: %v", err)
 	}
